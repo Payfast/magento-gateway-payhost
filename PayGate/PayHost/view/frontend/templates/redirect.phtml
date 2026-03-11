@@ -1,6 +1,6 @@
 <?php
 /*
- * Copyright (c) 2024 Payfast (Pty) Ltd
+ * Copyright (c) 2026 Payfast (Pty) Ltd
  *
  * Author: App Inlet (Pty) Ltd
  *
@@ -10,19 +10,19 @@
 ?>
 <h2><?=
     /** @noinspection PhpUndefinedVariableInspection */
-    $block->escapeHtml($block->getMessage()); ?></h2>
+    $escaper->escapeHtml($block->getMessage()); ?></h2>
 
-<form name="<?= $block->escapeHtml($block->getName()); ?>"
-      id="<?= $block->escapeHtml($block->getId()); ?>"
-      action="<?= $block->escapeHtml($block->getFormAction()); ?>"
+<form name="<?= $escaper->escapeHtml($block->getName()); ?>"
+      id="<?= $escaper->escapeHtml($block->getId()); ?>"
+      action="<?= $escaper->escapeHtml($block->getFormAction()); ?>"
       method="post">
 
     <?php
     foreach ($block->getFormData() as $item => $value): ?>
         <input type="hidden" name="<?=
-        $block->escapeHtml($item); ?>" value="<?=
-        $block->escapeHtml($value); ?>" size="200">
-    <?php
+        $escaper->escapeHtml($item); ?>" value="<?=
+        $escaper->escapeHtml($value); ?>" size="200">
+        <?php
     endforeach; ?>
 </form>
 <?= /* @noEscape */

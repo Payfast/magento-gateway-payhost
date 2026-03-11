@@ -1,0 +1,15 @@
+/*
+ * Copyright (c) 2026 Payfast (Pty) Ltd
+ *
+ * Author: App Inlet (Pty) Ltd
+ *
+ * Released under the GNU General Public License
+ */
+/* payment types style */
+
+img.payment-icon {
+    max-width: 30%;
+    max-height: 50px;
+}
+
+/* payment types style end */

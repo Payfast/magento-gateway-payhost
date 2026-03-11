@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (c) 2024 Payfast (Pty) Ltd
+ * Copyright (c) 2026 Payfast (Pty) Ltd
  *
  * Author: App Inlet (Pty) Ltd
  *
@@ -52,6 +52,8 @@ use Magento\Vault\Api\PaymentTokenManagementInterface;
 use PayGate\PayHost\Controller\AbstractPaygate;
 use PayGate\PayHost\Controller\Redirect\Success;
 use PayGate\PayHost\Helper\Data as PaygateHelper;
+use PayGate\PayHost\Helper\Lock;
+use PayGate\PayHost\Helper\EmailDuplicatePrevention;
 use PayGate\PayHost\Model\Config;
 use PayGate\PayHost\Model\PayGate;
 use Psr\Log\LoggerInterface;
@@ -131,6 +133,16 @@ class Index extends AbstractPaygate
      */
     protected OrderStatusHistoryRepositoryInterface $orderStatusHistoryRepository;
 
+    /**
+     * @var Lock
+     */
+    protected Lock $lockHelper;
+
+    /**
+     * @var EmailDuplicatePrevention
+     */
+    protected EmailDuplicatePrevention $emailDuplicateHelper;
+
 
     /**
      * @param PageFactory $pageFactory
@@ -166,6 +178,8 @@ class Index extends AbstractPaygate
      * @param ManagerInterface $messageManager
      * @param Response $response
      * @param OrderStatusHistoryRepositoryInterface $orderStatusHistoryRepository
+     * @param Lock $lockHelper
+     * @param EmailDuplicatePrevention $emailDuplicateHelper
      */
     public function __construct(
         PageFactory $pageFactory,
@@ -199,7 +213,9 @@ class Index extends AbstractPaygate
         ResultFactory $resultFactory,
         Request $request,
         ManagerInterface $messageManager,
-        OrderStatusHistoryRepositoryInterface $orderStatusHistoryRepository
+        OrderStatusHistoryRepositoryInterface $orderStatusHistoryRepository,
+        Lock $lockHelper,
+        EmailDuplicatePrevention $emailDuplicateHelper
     ) {
         $this->pageFactory                  = $pageFactory;
         $this->jsonFactory                  = $jsonFactory;
@@ -216,6 +232,8 @@ class Index extends AbstractPaygate
         $this->transactionBuilder           = $transactionBuilder;
         $this->orderSender                  = $orderSender;
         $this->orderStatusHistoryRepository = $orderStatusHistoryRepository;
+        $this->lockHelper                   = $lockHelper;
+        $this->emailDuplicateHelper         = $emailDuplicateHelper;
 
         parent::__construct(
             $pageFactory,
@@ -249,7 +267,9 @@ class Index extends AbstractPaygate
             $resultFactory,
             $request,
             $messageManager,
-            $orderStatusHistoryRepository
+            $orderStatusHistoryRepository,
+            $lockHelper,
+            $emailDuplicateHelper
         );
     }
 
@@ -277,21 +297,41 @@ class Index extends AbstractPaygate
         $due         = $order->getTotalDue();
 
         $resultRaw = $this->resultFactory->create(ResultFactory::TYPE_RAW);
-
         $resultRaw->setHttpResponseCode(200);
-
         $resultRaw->setContents('OK');
 
-        $debugCron             = $this->paymentMethod->getConfigData('debug_cron');
-        $canProcessThisOrder   = $this->paymentMethod->getConfigData('ipn_method') != '1';
-        $resultRedirectFactory = $this->resultFactory->create(ResultFactory::TYPE_REDIRECT);
+        // Create lock identifier for this notification
+        $payRequestId   = $data['PAY_REQUEST_ID'] ?? '';
+        $lockIdentifier = $this->lockHelper->createNotifyLockIdentifier($reference, $payRequestId);
 
+        // Check if this notification is already being processed
+        if ($this->lockHelper->isLocked($lockIdentifier)) {
+            $this->logger->info(
+                "Notification already being processed for reference: {$reference}, PAY_REQUEST_ID: {$payRequestId}"
+            );
 
-        if ($invoices > 0 && $due == 0.0) {
+            return $resultRaw;
+        }
+
+        // Acquire lock for processing this notification
+        if (!$this->lockHelper->acquireLock($lockIdentifier, 300)) {
+            $this->logger->warning("Failed to acquire lock for notification processing: {$lockIdentifier}");
+
             return $resultRaw;
         }
 
         try {
+            $debugCron             = $this->paymentMethod->getConfigData('debug_cron');
+            $canProcessThisOrder   = $this->paymentMethod->getConfigData('ipn_method') != '1';
+            $resultRedirectFactory = $this->resultFactory->create(ResultFactory::TYPE_REDIRECT);
+
+            if ($invoices > 0 && $due == 0.0) {
+                $this->logger->info('Order already processed, releasing lock');
+                $this->lockHelper->releaseLock($lockIdentifier);
+
+                return $resultRaw;
+            }
+
             if (!$debugCron && $canProcessThisOrder) {
                 $this->secret = $this->paymentMethod->getConfigData('encryption_key');
                 $this->id     = $this->paymentMethod->getConfigData('paygate_id');
@@ -326,137 +366,8 @@ class Index extends AbstractPaygate
                     } else {
                         $status = $data['TRANSACTION_STATUS'];
                     }
-                    switch ($status) {
-                        case 1:
-                            $orderState = $order->getState();
-                            if ($orderState != Order::STATE_COMPLETE && $orderState != Order::STATE_PROCESSING) {
-                                $status = Order::STATE_PROCESSING;
-                                if ($this->paymentMethod->getConfigData('Successful_Order_status') != "") {
-                                    $status = $this->paymentMethod->getConfigData('Successful_Order_status');
-                                }
 
-                                $model                  = $this->paymentMethod;
-                                $order_successful_email = $model->getConfigData('order_email');
-
-                                $history = $order->addCommentToStatusHistory(
-                                    __(
-                                        'Notify Response, Transaction has been approved, Pay_Request_Id: '
-                                        . $data['PAY_REQUEST_ID']
-                                    )
-                                );
-
-                                if ($order_successful_email != '0') {
-                                    $this->orderSender->send($order);
-                                    $history->setIsCustomerNotified(true);
-                                } else {
-                                    $history->setIsCustomerNotified(false);
-                                }
-
-                                try {
-                                    // Save the status history
-                                    $this->orderStatusHistoryRepository->save($history);
-
-                                    // Save the order
-                                    $this->orderRepository->save($order);
-                                } catch (LocalizedException $e) {
-                                    // Handle any exceptions during the save process
-                                    $this->logger->error('Order save error: ' . $e->getMessage());
-                                }
-
-                                $invoices = $order->getInvoiceCollection()->count();
-                                $due      = $order->getTotalDue();
-
-                                $alreadyPaid = false;
-                                if ($invoices > 0 && $due == 0.0) {
-                                    $alreadyPaid = true;
-                                    $this->logger->info('Payment has already been processed');
-                                }
-                                if (!$alreadyPaid) {
-                                    // Capture invoice when payment is successful
-                                    $invoice = $this->invoiceService->prepareInvoice($order);
-                                    $invoice->setRequestedCaptureCase(Invoice::CAPTURE_ONLINE);
-                                    $invoice->register();
-
-                                    // Save the invoice to the order
-                                    $transaction = $this->dbTransaction
-                                        ->addObject($invoice)
-                                        ->addObject($invoice->getOrder());
-
-                                    $transaction->save();
-
-                                    // Save Transaction Response
-                                    $this->createTransaction($data);
-
-                                    // Save card vault data
-                                    if ($vaultActive && !empty($notifyResponse['ns2VaultId'])) {
-                                        $model = $this->paymentMethod;
-                                        $model->saveVaultData($order, $notifyResponse);
-                                    }
-
-                                    $order->setStatus($status);
-                                    $order->setState($status);
-                                    // Magento\Sales\Model\Order\Email\Sender\InvoiceSender
-                                    $send_invoice_email = $model->getConfigData('invoice_email');
-                                    $history            = $order->addCommentToStatusHistory(
-                                        __(
-                                            'Notify Response, update order.'
-                                        )
-                                    );
-                                    if ($send_invoice_email != '0') {
-                                        $this->invoiceSender->send($invoice);
-                                        $history->setIsCustomerNotified(true);
-                                    } else {
-                                        $history->setIsCustomerNotified(false);
-                                    }
-                                    $this->orderStatusHistoryRepository->save($history);
-                                    $this->orderRepository->save($order);
-                                }
-                            }
-                            break;
-                        case 2:
-                            $this->messageManager->addNoticeMessage('Transaction has been declined.');
-
-                            $history = $order->addCommentToStatusHistory(
-                                __(
-                                    'Notify Response, Transaction has been declined, Pay_Request_Id: '
-                                    . $data['PAY_REQUEST_ID']
-                                )
-                            );
-                            $history->setIsCustomerNotified(false);
-
-                            if ($order->getStatus() != 'canceled') {
-                                $this->order->cancel();
-                                $this->orderRepository->save($order);
-                                $this->checkoutSession->restoreQuote();
-                                // Save Transaction Response
-                                $this->createTransaction($data);
-                            }
-                            break;
-                        case 0:
-                        case 4:
-                            $this->messageManager->addNoticeMessage('Transaction has been cancelled');
-
-                            $history = $order->addCommentToStatusHistory(
-                                __(
-                                    'Notify Response, Transaction has been cancelled, Pay_Request_Id: '
-                                    . $data['PAY_REQUEST_ID']
-                                )
-                            );
-                            $history->setIsCustomerNotified(false);
-
-                            if ($order->getStatus() != 'canceled') {
-                                $this->order->cancel();
-                                $this->orderRepository->save($order);
-                                $this->checkoutSession->restoreQuote();
-                                // Save Transaction Response
-                                $this->createTransaction($data);
-                            }
-                            break;
-                        default:
-                            // Save Transaction Response
-                            $this->createTransaction($data);
-                            break;
-                    }
+                    $this->processOrderStatus($status, $order, $data, $notifyResponse, $vaultActive);
                 }
 
                 $this->logger->debug('Successful Notify');
@@ -465,11 +376,18 @@ class Index extends AbstractPaygate
             return $resultRaw;
         } catch (LocalizedException $exception) {
             $this->logger->error($pre . $exception->getMessage());
+
+            return $resultRaw;
         } catch (Exception $e) {
             // Save Transaction Response
             $this->createTransaction($data);
             $this->logger->error($pre . $e->getMessage());
-            $this->messageManager->addExceptionMessage($e, __('We can\'t start Paygate Checkout.'));
+            $this->messageManager->addExceptionMessage($e, __('We can\'t start Payfast Gateway Checkout.'));
+
+            return $resultRaw;
+        } finally {
+            // Always release the lock
+            $this->lockHelper->releaseLock($lockIdentifier);
         }
     }
 
@@ -629,5 +547,252 @@ class Index extends AbstractPaygate
 					</SingleFollowUpRequest>
                 </SOAP-ENV:Body>
             </SOAP-ENV:Envelope>';
+    }
+
+    /**
+     * Process order status with email duplicate prevention
+     *
+     * @param int $status
+     * @param Order $order
+     * @param array $data
+     * @param array $notifyResponse
+     * @param bool $vaultActive
+     *
+     * @return void
+     */
+    private function processOrderStatus(
+        int $status,
+        Order $order,
+        array $data,
+        array $notifyResponse,
+        bool $vaultActive
+    ): void {
+        switch ($status) {
+            case 1:
+                $this->processSuccessfulPayment($order, $data, $notifyResponse, $vaultActive);
+                break;
+            case 2:
+                $this->processDeclinedPayment($order, $data);
+                break;
+            case 0:
+            case 4:
+                $this->processCancelledPayment($order, $data);
+                break;
+            default:
+                // Save Transaction Response
+                $this->createTransaction($data);
+                break;
+        }
+    }
+
+    /**
+     * Process successful payment with duplicate prevention
+     *
+     * @param Order $order
+     * @param array $data
+     * @param array $notifyResponse
+     * @param bool $vaultActive
+     *
+     * @return void
+     */
+    private function processSuccessfulPayment(Order $order, array $data, array $notifyResponse, bool $vaultActive): void
+    {
+        $orderState = $order->getState();
+        if ($orderState != Order::STATE_COMPLETE && $orderState != Order::STATE_PROCESSING) {
+            $status = Order::STATE_PROCESSING;
+            if ($this->paymentMethod->getConfigData('Successful_Order_status') != "") {
+                $status = $this->paymentMethod->getConfigData('Successful_Order_status');
+            }
+
+            $model                = $this->paymentMethod;
+            $orderSuccessfulEmail = $model->getConfigData('order_email');
+
+            $history = $order->addCommentToStatusHistory(
+                __(
+                    'Notify Response, Transaction has been approved, Pay_Request_Id: '
+                    . $data['PAY_REQUEST_ID']
+                )
+            );
+
+            // Check for email duplicates before sending
+            $orderId = (string)$order->getId();
+            if ($orderSuccessfulEmail != '0' && !$this->emailDuplicateHelper->hasEmailBeenSent($orderId, 'order')) {
+                try {
+                    $this->orderSender->send($order);
+                    $this->emailDuplicateHelper->markEmailAsSent($orderId, 'order');
+                    $history->setIsCustomerNotified(true);
+                    $this->logger->info("Order confirmation email sent for order: {$orderId}");
+                } catch (Exception $e) {
+                    $this->logger->error("Failed to send order email for order {$orderId}: " . $e->getMessage());
+                    $history->setIsCustomerNotified(false);
+                }
+            } else {
+                if ($orderSuccessfulEmail == '0') {
+                    $this->logger->info("Order email disabled for order: {$orderId}");
+                } else {
+                    $this->logger->info("Order email already sent for order: {$orderId}");
+                }
+                $history->setIsCustomerNotified(false);
+            }
+
+            try {
+                // Save the status history
+                $this->orderStatusHistoryRepository->save($history);
+                // Save the order
+                $this->orderRepository->save($order);
+            } catch (LocalizedException $e) {
+                // Handle any exceptions during the save process
+                $this->logger->error('Order save error: ' . $e->getMessage());
+            }
+
+            $invoices = $order->getInvoiceCollection()->count();
+            $due      = $order->getTotalDue();
+
+            $alreadyPaid = false;
+            if ($invoices > 0 && $due == 0.0) {
+                $alreadyPaid = true;
+                $this->logger->info('Payment has already been processed');
+            }
+
+            if (!$alreadyPaid) {
+                $this->processInvoiceCreation($order, $data, $notifyResponse, $vaultActive, $status);
+            }
+        }
+    }
+
+    /**
+     * Process invoice creation with duplicate prevention
+     *
+     * @param Order $order
+     * @param array $data
+     * @param array $notifyResponse
+     * @param bool $vaultActive
+     * @param string $status
+     *
+     * @return void
+     */
+    private function processInvoiceCreation(
+        Order $order,
+        array $data,
+        array $notifyResponse,
+        bool $vaultActive,
+        string $status
+    ): void {
+        // Capture invoice when payment is successful
+        $invoice = $this->invoiceService->prepareInvoice($order);
+        $invoice->setRequestedCaptureCase(Invoice::CAPTURE_ONLINE);
+        $invoice->register();
+
+        // Save the invoice to the order
+        $transaction = $this->dbTransaction
+            ->addObject($invoice)
+            ->addObject($invoice->getOrder());
+
+        $transaction->save();
+
+        // Save Transaction Response
+        $this->createTransaction($data);
+
+        // Save card vault data
+        if ($vaultActive && !empty($notifyResponse['ns2VaultId'])) {
+            $model = $this->paymentMethod;
+            $model->saveVaultData($order, $notifyResponse);
+        }
+
+        $order->setStatus($status);
+        $order->setState($status);
+
+        $model            = $this->paymentMethod;
+        $sendInvoiceEmail = $model->getConfigData('invoice_email');
+        $history          = $order->addCommentToStatusHistory(
+            __(
+                'Notify Response, update order.'
+            )
+        );
+
+        // Check for invoice email duplicates before sending
+        $orderId   = (string)$order->getId();
+        $invoiceId = (string)$invoice->getId();
+        if ($sendInvoiceEmail != '0' && !$this->emailDuplicateHelper->hasInvoiceEmailBeenSent($orderId, $invoiceId)) {
+            try {
+                $this->invoiceSender->send($invoice);
+                $this->emailDuplicateHelper->markInvoiceEmailAsSent($orderId, $invoiceId);
+                $history->setIsCustomerNotified(true);
+                $this->logger->info("Invoice email sent for order: {$orderId}, invoice: {$invoiceId}");
+            } catch (Exception $e) {
+                $this->logger->error(
+                    "Failed to send invoice email for order {$orderId}, invoice {$invoiceId}: " . $e->getMessage()
+                );
+                $history->setIsCustomerNotified(false);
+            }
+        } else {
+            if ($sendInvoiceEmail == '0') {
+                $this->logger->info("Invoice email disabled for order: {$orderId}");
+            } else {
+                $this->logger->info("Invoice email already sent for order: {$orderId}, invoice: {$invoiceId}");
+            }
+            $history->setIsCustomerNotified(false);
+        }
+
+        $this->orderStatusHistoryRepository->save($history);
+        $this->orderRepository->save($order);
+    }
+
+    /**
+     * Process declined payment
+     *
+     * @param Order $order
+     * @param array $data
+     *
+     * @return void
+     */
+    private function processDeclinedPayment(Order $order, array $data): void
+    {
+        $this->messageManager->addNoticeMessage('Transaction has been declined.');
+
+        $history = $order->addCommentToStatusHistory(
+            __(
+                'Notify Response, Transaction has been declined, Pay_Request_Id: '
+                . $data['PAY_REQUEST_ID']
+            )
+        );
+        $history->setIsCustomerNotified(false);
+
+        if ($order->getStatus() != 'canceled') {
+            $this->order->cancel();
+            $this->orderRepository->save($order);
+            $this->checkoutSession->restoreQuote();
+            // Save Transaction Response
+            $this->createTransaction($data);
+        }
+    }
+
+    /**
+     * Process cancelled payment
+     *
+     * @param Order $order
+     * @param array $data
+     *
+     * @return void
+     */
+    private function processCancelledPayment(Order $order, array $data): void
+    {
+        $this->messageManager->addNoticeMessage('Transaction has been cancelled');
+
+        $history = $order->addCommentToStatusHistory(
+            __(
+                'Notify Response, Transaction has been cancelled, Pay_Request_Id: '
+                . $data['PAY_REQUEST_ID']
+            )
+        );
+        $history->setIsCustomerNotified(false);
+
+        if ($order->getStatus() != 'canceled') {
+            $this->order->cancel();
+            $this->orderRepository->save($order);
+            $this->checkoutSession->restoreQuote();
+            // Save Transaction Response
+            $this->createTransaction($data);
+        }
     }
 }

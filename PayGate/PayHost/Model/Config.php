@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (c) 2024 Payfast (Pty) Ltd
+ * Copyright (c) 2026 Payfast (Pty) Ltd
  *
  * Author: App Inlet (Pty) Ltd
  *
@@ -185,7 +185,7 @@ class Config extends AbstractConfig
      */
     public function getPaymentMarkImageUrl()
     {
-        return $this->_assetRepo->getUrl('PayGate_PayHost::images/paygate.svg');
+        return $this->_assetRepo->getUrl('PayGate_PayHost::images/payfast-logo.svg');
     }
 
     /**
@@ -196,7 +196,7 @@ class Config extends AbstractConfig
      */
     public function getPaymentMarkWhatIsPaygate()
     {
-        return 'Paygate Payment Gateway';
+        return 'Payfast Gateway Payment';
     }
 
     /**
@@ -276,7 +276,7 @@ class Config extends AbstractConfig
 
     public function getApiCredentials()
     {
-        $data                   = array();
+        $data                   = [];
         $data['encryption_key'] = $this->getConfig('encryption_key');
         $data['paygate_id']     = $this->getConfig('paygate_id');
 

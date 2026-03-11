@@ -1,6 +1,30 @@
 # Changelog
 
-## [[1.1.0]](https://github.com/Paygate/PayHost_Magento_2/releases/tag/v1.1.0)
+## [[1.2.0]](https://github.com/Payfast/magento-gateway-payhost/releases/tag/v1.2.0)
+
+### Fixed
+
+- **Duplicate invoice creation and order confirmation emails** caused by multiple / simultaneous PayHost notification
+  requests  
+  (most common in high-latency or retry-heavy scenarios).
+
+### Added
+
+- Cache-based **locking** to ensure only one notification is processed per order.
+- **Duplicate email prevention** (tracks & blocks repeated confirmation/invoice emails).
+- Daily cron job that cleans up expired locks and email tracking records.
+
+### Changed
+
+- Refactored `Notify/Index` controller:
+    - Acquires lock before processing.
+    - Skips if lock cannot be obtained.
+    - Cleaner structure with better error handling & logging.
+    - Applies duplicate-email check before sending any email.
+
+- This release makes notification handling idempotent and reliable under concurrent / retry conditions.
+
+## [[1.1.0]](https://github.com/Payfast/magento-gateway-payhost/releases/tag/v1.1.0)
 
 ### Added
 
@@ -14,7 +38,7 @@
 - Query method for **Cron** and **Fetch** reliability.
 - IPN/Redirect method reliability.
 
-## [[1.0.1]](https://github.com/Paygate/PayHost_Magento_2/releases/tag/v1.0.1)
+## [[1.0.1]](https://github.com/Payfast/magento-gateway-payhost/releases/tag/v1.0.1)
 
 ### Added
 
@@ -29,7 +53,7 @@
 
 - General bug fixes and improvements.
 
-## [[1.0.0]](https://github.com/Paygate/PayHost_Magento_2/releases/tag/v1.0.0)
+## [[1.0.0]](https://github.com/Payfast/magento-gateway-payhost/releases/tag/v1.0.0)
 
 ### Added
 

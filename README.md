@@ -1,16 +1,16 @@
-# PayHost_Magento_2
+# magento-gateway-payhost
 
-## Paygate PayHost (with tokenization) plugin v1.1.0 for Magento v2.4.7
+## Payfast Gateway (PayHost) module v1.2.0 for Magento v2.4.8
 
-This is Paygate Payhost (with tokenization) for Magento 2. Please feel free to contact the Payfast support team at
-support@payfast.help should you require any assistance.
+This is the Payfast Gateway (PayHost) module for Magento 2. Please feel free
+to [contact the Payfast support team](https://payfast.io/contact/) should you require any assistance.
 
 ## Installation
 
 1. **Download the Plugin**
 
-    - Visit the [releases page](https://github.com/Paygate/PayHost_Magento_2/releases) and
-      download [PayGate.zip](https://github.com/Paygate/PayHost_Magento_2/releases/download/v1.1.0/PayGate.zip).
+    - Visit the [releases page](https://github.com/Payfast/magento-gateway-payhost/releases) and
+      download [PayGate.zip](https://github.com/Payfast/magento-gateway-payhost/releases/download/v1.2.0/PayGate.zip).
 
 2. **Install the Plugin**
 
@@ -29,7 +29,7 @@ support@payfast.help should you require any assistance.
 
     - Login to the Magento admin panel.
     - Navigate to **Stores > Configuration > Sales > Payment Methods** and click on
-      **Paygate Payhost**.
+      **Payfast Gateway (PayHost)**.
     - Configure the module according to your needs, then click the **Save Config** button.
 
 ## Collaboration

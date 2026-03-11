@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (c) 2024 Payfast (Pty) Ltd
+ * Copyright (c) 2026 Payfast (Pty) Ltd
  *
  * Author: App Inlet (Pty) Ltd
  *
@@ -64,7 +64,6 @@ use SimpleXMLElement;
 use PayGate\PayHost\Helper\ArrayHelper;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
-
 
 /**
  * @SuppressWarnings(PHPMD.TooManyFields)
@@ -328,8 +327,8 @@ class PayGate extends AbstractExtensibleModel implements MethodInterface, Paymen
         CustomerSession $customerSession,
         PaymentTokenManagementInterface $paymentTokenManagementInterface,
         ArrayHelper $arrayHelper,
-        AbstractResource $resource = null,
-        AbstractDb $resourceCollection = null,
+        ?AbstractResource $resource = null,
+        ?AbstractDb $resourceCollection = null,
         array $data = []
     ) {
         $this->_storeManager             = $storeManager;
@@ -411,7 +410,7 @@ class PayGate extends AbstractExtensibleModel implements MethodInterface, Paymen
      *
      * @return bool
      */
-    public function isAvailable(CartInterface $quote = null)
+    public function isAvailable(?CartInterface $quote = null)
     {
         return $this->_config->isMethodAvailable();
     }

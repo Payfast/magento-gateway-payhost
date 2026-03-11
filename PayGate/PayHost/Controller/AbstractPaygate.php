@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (c) 2024 Payfast (Pty) Ltd
+ * Copyright (c) 2026 Payfast (Pty) Ltd
  *
  * Author: App Inlet (Pty) Ltd
  *
@@ -47,6 +47,8 @@ use Magento\Sales\Model\Service\InvoiceService;
 use Magento\Store\Model\StoreManagerInterface;
 use Magento\Vault\Api\PaymentTokenManagementInterface;
 use PayGate\PayHost\Helper\Data as PaygateHelper;
+use PayGate\PayHost\Helper\Lock;
+use PayGate\PayHost\Helper\EmailDuplicatePrevention;
 use PayGate\PayHost\Model\Config;
 use PayGate\PayHost\Model\PayGate;
 use Psr\Log\LoggerInterface;
@@ -236,6 +238,16 @@ abstract class AbstractPaygate implements
     protected OrderStatusHistoryRepositoryInterface $orderStatusHistoryRepository;
 
     /**
+     * @var Lock
+     */
+    protected Lock $lockHelper;
+
+    /**
+     * @var EmailDuplicatePrevention
+     */
+    protected EmailDuplicatePrevention $emailDuplicateHelper;
+
+    /**
      * @param PageFactory $pageFactory
      * @param CustomerSession $customerSession
      * @param CheckoutSession $checkoutSession
@@ -268,6 +280,8 @@ abstract class AbstractPaygate implements
      * @param Request $request
      * @param ManagerInterface $messageManager
      * @param OrderStatusHistoryRepositoryInterface $orderStatusHistoryRepository
+     * @param Lock $lockHelper
+     * @param EmailDuplicatePrevention $emailDuplicateHelper
      */
     public function __construct(
         PageFactory $pageFactory,
@@ -301,7 +315,9 @@ abstract class AbstractPaygate implements
         ResultFactory $resultFactory,
         Request $request,
         ManagerInterface $messageManager,
-        OrderStatusHistoryRepositoryInterface $orderStatusHistoryRepository
+        OrderStatusHistoryRepositoryInterface $orderStatusHistoryRepository,
+        Lock $lockHelper,
+        EmailDuplicatePrevention $emailDuplicateHelper
     ) {
         $pre = __METHOD__ . " : ";
 
@@ -340,6 +356,8 @@ abstract class AbstractPaygate implements
         $this->paygatehelper                           = $paygatehelper;
         $this->jsonFactory                             = $jsonFactory;
         $this->orderStatusHistoryRepository            = $orderStatusHistoryRepository;
+        $this->lockHelper                              = $lockHelper;
+        $this->emailDuplicateHelper                    = $emailDuplicateHelper;
 
         $this->logger->debug($pre . 'eof');
     }

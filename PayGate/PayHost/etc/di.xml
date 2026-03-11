@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!--
 /*
- * Copyright (c) 2024 Payfast (Pty) Ltd
+ * Copyright (c) 2026 Payfast (Pty) Ltd
  *
  * Author: App Inlet (Pty) Ltd
  *
@@ -20,6 +20,20 @@
     <type name="\PayGate\PayHost\Helper\ArrayHelper">
         <arguments>
             <argument name="arrayHelper" xsi:type="object">PayGate\PayHost\Helper\ArrayHelper</argument>
+        </arguments>
+    </type>
+
+    <!-- Cache frontend configuration for lock mechanism -->
+    <type name="\PayGate\PayHost\Helper\Lock">
+        <arguments>
+            <argument name="cache" xsi:type="object">Magento\Framework\App\Cache\Type\Config</argument>
+        </arguments>
+    </type>
+
+    <!-- Cache frontend configuration for email duplicate prevention -->
+    <type name="\PayGate\PayHost\Helper\EmailDuplicatePrevention">
+        <arguments>
+            <argument name="cache" xsi:type="object">Magento\Framework\App\Cache\Type\Config</argument>
         </arguments>
     </type>
 </config>
