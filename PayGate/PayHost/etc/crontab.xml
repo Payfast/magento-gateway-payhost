@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <!--
 /*
- * Copyright (c) 2024 Payfast (Pty) Ltd
+ * Copyright (c) 2026 Payfast (Pty) Ltd
  *
  * Author: App Inlet (Pty) Ltd
  *
@@ -13,6 +13,9 @@
     <group id="default">
         <job instance="PayGate\PayHost\Cron\CronQuery" method="execute" name="paygate_payhost_query">
             <schedule>*/10 * * * *</schedule>
+        </job>
+        <job instance="PayGate\PayHost\Cron\CleanupCache" method="execute" name="paygate_payhost_cleanup_cache">
+            <schedule>0 2 * * *</schedule>
         </job>
     </group>
 </config>

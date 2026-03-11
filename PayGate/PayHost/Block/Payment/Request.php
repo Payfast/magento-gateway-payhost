@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (c) 2024 Payfast (Pty) Ltd
+ * Copyright (c) 2026 Payfast (Pty) Ltd
  *
  * Author: App Inlet (Pty) Ltd
  *
@@ -79,7 +79,7 @@ class Request extends Template
      */
     public function _prepareLayout()
     {
-        $this->setMessage('Redirecting to Paygate')
+        $this->setMessage('Redirecting to Payfast')
              ->setId('paygate_checkout')
              ->setName('paygate_checkout')
              ->setFormMethod('POST')
